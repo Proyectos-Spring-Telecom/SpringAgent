@@ -2,12 +2,32 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
 
 from .base_tool import BaseTool
 
 LOGGER = logging.getLogger("[ToolRegistry]")
+
+
+def coerce_tool_arguments(raw: Any) -> dict[str, Any]:
+    """Normaliza argumentos de tool_calls (dict o JSON string desde Ollama)."""
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return {}
+        try:
+            parsed: Any = json.loads(text)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            LOGGER.warning("Arguments de tool no son JSON válido: %s", text[:200])
+            return {}
+    return {}
 
 
 class ToolRegistry:
@@ -33,18 +53,22 @@ class ToolRegistry:
         """Lista nombres de todas las tools registradas."""
         return list(self._tools.keys())
 
-    async def execute(self, name: str, arguments: dict) -> dict[str, Any]:
+    async def execute(self, name: str, arguments: Any) -> dict[str, Any]:
         """Ejecuta una tool por nombre con los argumentos dados."""
         tool = self._tools.get(name)
         if not tool:
             LOGGER.warning("Tool no encontrada: %s", name)
-            return {"error": f"Herramienta '{name}' no existe"}
+            return {"status": "error", "message": f"Herramienta '{name}' no existe", "data": None}
 
-        LOGGER.info("Ejecutando tool: %s con args: %s", name, arguments)
+        args = coerce_tool_arguments(arguments)
+        LOGGER.info("Ejecutando tool: %s con args: %s", name, args)
         try:
-            result = await tool.execute(**arguments)
+            result = await tool.execute(**args)
             LOGGER.info("Tool %s ejecutada exitosamente", name)
             return result
+        except TypeError as exc:
+            LOGGER.warning("Argumentos inválidos para tool %s: %s", name, exc)
+            return {"status": "error", "message": f"Argumentos inválidos para '{name}': {exc}", "data": None}
         except Exception as exc:
             LOGGER.exception("Error ejecutando tool %s: %s", name, exc)
-            return {"error": f"Error ejecutando '{name}': {str(exc)}"}
+            return {"status": "error", "message": f"Error ejecutando '{name}': {exc}", "data": None}

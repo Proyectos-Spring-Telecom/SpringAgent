@@ -23,8 +23,8 @@ class OllamaClient:
 
     async def chat(
         self,
-        messages: list[dict[str, str]],
-        tools: Optional[list[dict]] = None,
+        messages: list[dict[str, Any]],
+        tools: Optional[list[dict[str, Any]]] = None,
         stream: bool = False,
     ) -> dict[str, Any]:
         """Envía mensajes a Ollama y retorna la respuesta completa."""
