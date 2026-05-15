@@ -371,6 +371,14 @@ class IneParser:
     @staticmethod
     def find_curp(text: str) -> str | None:
         u = text.upper()
+        # INE actual: 18 caracteres (4 letras + 6 fecha + H/M + 7 homoclave), ej. pegado "CURPMAGO000620HMSRRSA4"
+        m_new = re.search(r"CURP\s*([A-ZÑ]{4}\d{6}[HM][A-ZÑ0-9]{7})\b", u)
+        if m_new:
+            cand = m_new.group(1)
+            if len(cand) == 18:
+                fecha_z = cand[4:10].replace("O", "0").replace("I", "1").replace("L", "1")
+                if fecha_z.isdigit():
+                    return cand[:4] + fecha_z + cand[10:]
         m = re.search(r"CURP\s*([A-Z]{4}\d{6}[A-Z]{6,8}\d{1,2})", u)
         if m:
             cand = m.group(1)

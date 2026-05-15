@@ -10,6 +10,8 @@ from typing import Any
 
 from agent.ollama_client import OllamaClient
 
+from .ine_parser import IneParser
+
 LOGGER = logging.getLogger("[OllamaIneAnalyzer]")
 
 INE_EXTRACTION_PROMPT = """Eres un experto en documentos de identidad mexicanos (INE/IFE).
@@ -38,6 +40,14 @@ CAMPOS A EXTRAER (JSON con estas claves exactas):
 - estadoClave: Clave numérica del estado (2 dígitos) o null
 - municipioClave: Clave numérica del municipio (3 dígitos) o null
 - localidad: Clave de localidad (4 dígitos) o null
+
+CURP (prioridad alta — dedica atención extra):
+- Debe ser un string de EXACTAMENTE 18 caracteres en MAYÚSCULAS, sin espacios.
+- Estructura típica: pos. 1-4 letras (primeras letras de apellidos/nombre), pos. 5-10 fecha AAMMDD (solo dígitos), pos. 11 "H" o "M", pos. 12-18 consonantes/entidad y homoclave (letras y dígitos).
+- Busca la CURP en el REVERSO bajo la etiqueta "CURP", junto a la clave de elector, o en bloques alfanuméricos; en el frente a veces aparece repetida.
+- Si el OCR mostró "O" donde van dígitos en la fecha (pos. 5-10), sustituye por "0". Si confunde "I" o "l" con "1", corrígelo en la zona numérica.
+- No confundas la clave de elector (18 alfanuméricos distintos) con la CURP: la CURP empieza con 4 letras y la fecha en pos. 5-10 es numérica.
+- Si encuentras dos candidatos, prioriza el que coincida con el bloque junto a la palabra CURP o con formato CURP válido.
 
 REGLAS:
 1. Las palabras pegadas son comunes en OCR. "LAZAROCARDENAS" = "LAZARO CARDENAS", "BENITOJUAREZ" = "BENITO JUAREZ".
@@ -88,6 +98,77 @@ def _curp_plausible(value: Any) -> bool:
     return bool(_CURP_PATTERN.match(s))
 
 
+def _normalize_curp_candidate(raw: str) -> str | None:
+    """Normaliza un posible CURP del OCR: quita basura, corrige O/I en la fecha (pos. 5-10)."""
+    s = re.sub(r"[^A-Z0-9]", "", raw.upper())
+    if len(s) != 18:
+        return None
+    fecha_zone = s[4:10]
+    fecha_fix = fecha_zone.replace("O", "0").replace("I", "1").replace("L", "1").replace("S", "5")
+    if not fecha_fix.isdigit():
+        return None
+    rebuilt = s[:4] + fecha_fix + s[10:]
+    return rebuilt if _curp_plausible(rebuilt) else None
+
+
+def extract_curp_from_ocr_text(text: str) -> str | None:
+    """Intenta obtener CURP válido del texto crudo: IneParser + etiqueta CURP + ventana 18 chars."""
+    if not text or not text.strip():
+        return None
+
+    u = text.upper()
+    # "CURP" pegado al código sin espacio (muy frecuente en OCR de INE)
+    for m in re.finditer(r"CURP\s*([A-ZÑ]{4}\d{6}[HM][A-ZÑ0-9]{7})(?![A-Z0-9])", u):
+        cand = m.group(1)
+        n = _normalize_curp_candidate(cand)
+        if n:
+            return n
+        if _curp_plausible(cand):
+            return cand
+
+    found = IneParser.find_curp(text)
+    if found:
+        normalized = _normalize_curp_candidate(found)
+        if normalized:
+            return normalized
+        up = found.strip().upper()
+        if _curp_plausible(up):
+            return up
+
+    for m in re.finditer(r"CURP\s*[:\s]*([A-ZÑ0-9\s]{12,28})", u):
+        chunk = re.sub(r"[^A-Z0-9]", "", m.group(1))
+        for i in range(0, max(0, len(chunk) - 17)):
+            window = chunk[i : i + 18]
+            n = _normalize_curp_candidate(window)
+            if n:
+                return n
+
+    compact = re.sub(r"[^A-Z0-9]", "", text.upper())
+    for i in range(0, max(0, len(compact) - 17)):
+        window = compact[i : i + 18]
+        n = _normalize_curp_candidate(window)
+        if n:
+            return n
+
+    for m in re.finditer(r"\b([A-ZÑ]{4}\d{6}[HM][A-ZÑ0-9]{7})\b", text.upper()):
+        n = _normalize_curp_candidate(m.group(1))
+        if n:
+            return n
+
+    return None
+
+
+def _merge_ollama_curp_with_scan(ollama_val: Any, raw_text: str) -> str | None:
+    """Prefiere CURP de Ollama si es plausible; si no, escanea el texto OCR."""
+    if ollama_val and isinstance(ollama_val, str):
+        n = _normalize_curp_candidate(ollama_val)
+        if n:
+            return n
+        if _curp_plausible(ollama_val.strip().upper()):
+            return ollama_val.strip().upper()
+    return extract_curp_from_ocr_text(raw_text)
+
+
 class OllamaIneAnalyzer:
     """Usa Ollama para extraer datos de INE desde texto crudo de OCR."""
 
@@ -107,6 +188,9 @@ class OllamaIneAnalyzer:
             response = await self._ollama.chat(messages=messages, tools=None, stream=False)
             content = response.get("message", {}).get("content", "") or ""
             data = _parse_ollama_json(content)
+            curp_ok = _merge_ollama_curp_with_scan(data.get("curp"), raw_ocr_text)
+            if curp_ok:
+                data["curp"] = curp_ok
             elapsed = int((time.perf_counter() - start) * 1000)
 
             non_null = sum(1 for v in data.values() if v is not None and v != "")
@@ -129,8 +213,12 @@ class OllamaIneAnalyzer:
             }
 
     @staticmethod
-    def merge_results(regex_data: dict[str, Any], ollama_data: dict[str, Any]) -> dict[str, Any]:
-        """Merge: regex prioridad en patrones claros; Ollama rellena null; nombres/domicilio elige el más largo si ambos tienen valor."""
+    def merge_results(
+        regex_data: dict[str, Any],
+        ollama_data: dict[str, Any],
+        raw_ocr_text: str | None = None,
+    ) -> dict[str, Any]:
+        """Merge: regex prioridad en patrones claros; Ollama rellena null; refuerzo de CURP desde texto OCR."""
         merged: dict[str, Any] = {}
 
         regex_priority_fields = [
@@ -158,16 +246,27 @@ class OllamaIneAnalyzer:
             "estado",
         ]
 
+        raw_t = raw_ocr_text or ""
+
         def _truthy(val: Any) -> bool:
             return val is not None and val != ""
 
         for field in regex_priority_fields:
             regex_val = regex_data.get(field)
             ollama_val = ollama_data.get(field)
+            if field == "curp":
+                if _truthy(regex_val):
+                    rn = _normalize_curp_candidate(str(regex_val))
+                    if rn:
+                        merged[field] = rn
+                    else:
+                        ru = str(regex_val).strip().upper()
+                        merged[field] = ru if _curp_plausible(ru) else regex_val
+                else:
+                    merged[field] = _merge_ollama_curp_with_scan(ollama_val, raw_t)
+                continue
             if _truthy(regex_val):
                 merged[field] = regex_val
-            elif field == "curp" and _truthy(ollama_val):
-                merged[field] = ollama_val if _curp_plausible(ollama_val) else None
             else:
                 merged[field] = ollama_val if _truthy(ollama_val) else regex_val
 
@@ -183,5 +282,26 @@ class OllamaIneAnalyzer:
 
         merged["curpDerivado"] = regex_data.get("curpDerivado", False)
         merged["fuenteExtraccion"] = regex_data.get("fuenteExtraccion")
+
+        if raw_t and not _truthy(merged.get("curp")):
+            scanned = extract_curp_from_ocr_text(raw_t)
+            if scanned:
+                merged["curp"] = scanned
+                merged["curpDerivado"] = False
+        elif raw_t:
+            scanned = extract_curp_from_ocr_text(raw_t)
+            curp_now = str(merged.get("curp") or "")
+            if scanned and _curp_plausible(scanned):
+                if (
+                    "?" in curp_now
+                    or not _curp_plausible(curp_now)
+                    or (regex_data.get("curpDerivado") and curp_now != scanned)
+                ):
+                    merged["curp"] = scanned
+                    merged["curpDerivado"] = False
+        if _truthy(merged.get("curp")):
+            rn = _normalize_curp_candidate(str(merged["curp"]))
+            if rn:
+                merged["curp"] = rn
 
         return merged

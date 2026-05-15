@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 from .ine_parser import IneParser
-from .ollama_ine_analyzer import OllamaIneAnalyzer
+from .ollama_ine_analyzer import OllamaIneAnalyzer, extract_curp_from_ocr_text
 from .ocr_service import OcrService
 
 LOGGER = logging.getLogger("[IneEnhancedService]")
@@ -73,7 +73,7 @@ class IneEnhancedService:
 
         if ollama_success:
             LOGGER.info("Paso 4: Merge inteligente regex + Ollama")
-            final_data = OllamaIneAnalyzer.merge_results(regex_data, ollama_data)
+            final_data = OllamaIneAnalyzer.merge_results(regex_data, ollama_data, combined_text)
 
             for key in final_data:
                 if key in ("curpDerivado", "fuenteExtraccion"):
@@ -91,6 +91,10 @@ class IneEnhancedService:
         else:
             LOGGER.warning("Ollama no disponible o falló, usando solo regex")
             final_data = dict(regex_data)
+            if not (str(final_data.get("curp") or "").strip()):
+                curp_scan = extract_curp_from_ocr_text(combined_text)
+                if curp_scan:
+                    final_data["curp"] = curp_scan
             if not ollama_result.get("success"):
                 LOGGER.debug("Detalle Ollama: %s", ollama_result.get("error"))
 
