@@ -61,6 +61,13 @@ class AgentService:
         conv_id = conversation_id or str(uuid.uuid4())
         tools_used: list[str] = []
 
+        LOGGER.info(
+            "Chat request: user_id=%s client_id=%s message='%s'",
+            user_id,
+            client_id,
+            (message or "")[:100],
+        )
+
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": message},
@@ -108,8 +115,10 @@ class AgentService:
             processing_time_ms = int((time.perf_counter() - start_time) * 1000)
 
             LOGGER.info(
-                "Chat completado conv_id=%s tools_used=%s tiempo=%dms",
+                "Chat completado conv_id=%s user_id=%s client_id=%s tools_used=%s tiempo=%dms",
                 conv_id,
+                user_id,
+                client_id,
                 tools_used,
                 processing_time_ms,
             )

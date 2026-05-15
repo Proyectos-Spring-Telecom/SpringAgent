@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from agent.agent_service import AgentService
 from agent.ollama_client import OllamaClient
 from config import settings
+from ocr.ine_enhanced_service import IneEnhancedService
 from ocr.ine_parser import IneParser
 from ocr.ocr_schemas import (
     BatchOcrRequest,
@@ -35,6 +36,7 @@ MAX_UPLOAD_SIZE_BYTES = settings.ocr_max_upload_size
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 INE_PARSER = IneParser()
+INE_ENHANCED: IneEnhancedService | None = None
 AGENT = AgentService()
 
 app.add_middleware(
@@ -97,8 +99,11 @@ async def _read_reverso_image_optional(reverso: UploadFile | None) -> bytes | No
 
 @app.on_event("startup")
 def startup_event() -> None:
+    global INE_ENHANCED
     LOGGER.info("Inicializando singleton de OcrService")
-    OcrService.get_instance()
+    ocr_singleton = OcrService.get_instance()
+    INE_ENHANCED = IneEnhancedService(ocr_singleton)
+    LOGGER.info("IneEnhancedService inicializado (OCR + regex + Ollama)")
 
 
 @app.get("/health")
@@ -114,6 +119,12 @@ async def health() -> dict:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest) -> ChatResponse:
+    LOGGER.info(
+        "POST /chat desde NestJS: user_id=%s client_id=%s message='%s'",
+        request.user_id,
+        request.client_id,
+        (request.message or "")[:100],
+    )
     try:
         result = await AGENT.chat(
             message=request.message,
@@ -298,3 +309,24 @@ async def ine_extract_endpoint(
     except Exception as exc:
         INE_EXTRACT_LOGGER.exception("Error interno en /ine/extract")
         raise HTTPException(status_code=500, detail="Error interno del extractor INE") from exc
+
+
+@app.post("/ine/extract-enhanced")
+async def ine_extract_enhanced_endpoint(
+    frente: UploadFile = File(..., description="Imagen del frente de la INE"),
+    reverso: UploadFile | None = File(default=None, description="Imagen del reverso de la INE (opcional)"),
+) -> dict:
+    """Extracción mejorada: PaddleOCR + regex + Ollama (merge). Si Ollama falla, solo regex."""
+    if INE_ENHANCED is None:
+        raise HTTPException(status_code=503, detail="Servicio de extracción INE mejorada no disponible")
+
+    frente_bytes = await _read_upload_image(file=frente, field_name="frente")
+    reverso_bytes = await _read_reverso_image_optional(reverso)
+
+    try:
+        return await INE_ENHANCED.extract_from_images(frente_bytes, reverso_bytes)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        INE_EXTRACT_LOGGER.exception("Error interno en /ine/extract-enhanced")
+        raise HTTPException(status_code=500, detail="Error interno del extractor INE mejorado") from exc
