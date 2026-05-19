@@ -9,6 +9,8 @@ from typing import Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
+from fastapi.security import APIKeyHeader
 
 from agent.agent_service import AgentService
 from agent.ollama_client import OllamaClient
@@ -26,6 +28,7 @@ from ocr.ocr_schemas import (
     OcrResponse,
 )
 from ocr.ocr_service import OcrService
+from middleware.auth_middleware import ServiceKeyMiddleware
 from schemas.chat import ChatRequest, ChatResponse
 
 
@@ -34,7 +37,34 @@ LOGGER = logging.getLogger("[API]")
 INE_EXTRACT_LOGGER = logging.getLogger("[IneExtract]")
 MAX_UPLOAD_SIZE_BYTES = settings.ocr_max_upload_size
 
-app = FastAPI(title=settings.app_name, version=settings.app_version)
+api_key_header = APIKeyHeader(name="X-Service-Key", auto_error=False)
+
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+    swagger_ui_parameters={"persistAuthorization": True},
+)
+
+
+def _custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+    )
+    openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})["X-Service-Key"] = {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Service-Key",
+    }
+    openapi_schema["security"] = [{"X-Service-Key": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = _custom_openapi
 INE_PARSER = IneParser()
 INE_ENHANCED: IneEnhancedService | None = None
 AGENT = AgentService()
@@ -46,6 +76,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(ServiceKeyMiddleware)
 
 
 def _normalize_language(language: str) -> Literal["es", "en"]:

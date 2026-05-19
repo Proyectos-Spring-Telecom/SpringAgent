@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
 
+    # Security
+    service_api_key: str = "springagent-secure-key-change-in-production"
+
     # CORS
     cors_origins: str = "http://localhost:3005,http://localhost:3000"
 
