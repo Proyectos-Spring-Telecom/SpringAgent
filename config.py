@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     # OCR
     ocr_lazy_load: bool = False
     ocr_max_upload_size: int = 10485760
+    ocr_unload_timeout: int = 600
 
     # Limits
     max_conversation_history: int = 10

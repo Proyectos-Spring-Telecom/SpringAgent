@@ -133,20 +133,21 @@ async def _read_reverso_image_optional(reverso: UploadFile | None) -> bytes | No
 @app.on_event("startup")
 def startup_event() -> None:
     global INE_ENHANCED
-    LOGGER.info("Inicializando singleton de OcrService")
+    LOGGER.info("SpringAgent iniciado (OCR se cargará en la primera petición)")
     ocr_singleton = OcrService.get_instance()
     INE_ENHANCED = IneEnhancedService(ocr_singleton)
-    LOGGER.info("IneEnhancedService inicializado (OCR + regex + Ollama)")
 
 
 @app.get("/health")
 async def health() -> dict:
     ollama_ok = await OllamaClient().is_healthy()
+    ocr_instance = OcrService.get_instance()
     return {
         "status": "ok",
         "service": settings.app_name,
         "version": settings.app_version,
         "ollama": "connected" if ollama_ok else "disconnected",
+        "paddleocr": "loaded" if ocr_instance.is_loaded else "unloaded",
     }
 
 
