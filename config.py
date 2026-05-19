@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     service_api_key: str = "springagent-secure-key-change-in-production"
 
     # CORS
-    cors_origins: str = "http://localhost:3005,http://localhost:3000"
+    cors_origins: str = "http://localhost:3002,http://localhost:3000"
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     ollama_num_ctx: int = 4096
 
     # NestJS
-    nestjs_base_url: str = "http://localhost:3005/api"
+    nestjs_base_url: str = "http://localhost:3002/api"
     nestjs_service_key: str = "springagent-internal-key-change-in-production"
     nestjs_timeout: int = 30
 
