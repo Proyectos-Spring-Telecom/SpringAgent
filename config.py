@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     app_port: int = 8001
     app_env: str = "development"
     log_level: str = "INFO"
+    app_root_path: str = ""
 
     # Security
     service_api_key: str = "springagent-secure-key-change-in-production"

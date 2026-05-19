@@ -42,6 +42,7 @@ api_key_header = APIKeyHeader(name="X-Service-Key", auto_error=False)
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
+    root_path=settings.app_root_path,
     swagger_ui_parameters={"persistAuthorization": True},
 )
 
