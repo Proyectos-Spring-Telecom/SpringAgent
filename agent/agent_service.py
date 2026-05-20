@@ -8,14 +8,15 @@ import time
 import uuid
 from typing import Any, Optional
 
-from agent_tools.arrendatario_tools import GetArrendatarioDetailTool, GetArrendatarioListTool
-from agent_tools.catalogo_tools import GetFactoresTool, GetFormulasTool, GetInpcTool
-from agent_tools.client_tools import GetClientListTool, GetClientSummaryTool
-from agent_tools.contrato_tools import GetContratoDetailTool, GetContratoListTool
-from agent_tools.inmueble_tools import GetInmuebleDetailTool, GetInmuebleListTool
-from agent_tools.pago_tools import GetPagoListTool, GetPagoResumenTool
 from agent_tools.tool_registry import ToolRegistry
-from agent_tools.user_tools import GetUserDetailTool, GetUserListTool
+from agent_tools.unified_tools import (
+    BuscarArrendatariosTool,
+    BuscarClientesTool,
+    BuscarContratosTool,
+    BuscarInmueblesTool,
+    BuscarPagosTool,
+    BuscarUsuariosTool,
+)
 from services.nestjs_client import NestJSClient
 
 from .ollama_client import OllamaClient
@@ -47,22 +48,13 @@ class AgentService:
         self._register_tools()
 
     def _register_tools(self) -> None:
-        """Registra todas las herramientas disponibles."""
-        self._registry.register(GetClientSummaryTool(self._nestjs))
-        self._registry.register(GetClientListTool(self._nestjs))
-        self._registry.register(GetUserListTool(self._nestjs))
-        self._registry.register(GetUserDetailTool(self._nestjs))
-        self._registry.register(GetInmuebleListTool(self._nestjs))
-        self._registry.register(GetInmuebleDetailTool(self._nestjs))
-        self._registry.register(GetArrendatarioListTool(self._nestjs))
-        self._registry.register(GetArrendatarioDetailTool(self._nestjs))
-        self._registry.register(GetContratoListTool(self._nestjs))
-        self._registry.register(GetContratoDetailTool(self._nestjs))
-        self._registry.register(GetPagoListTool(self._nestjs))
-        self._registry.register(GetPagoResumenTool(self._nestjs))
-        self._registry.register(GetInpcTool(self._nestjs))
-        self._registry.register(GetFactoresTool(self._nestjs))
-        self._registry.register(GetFormulasTool(self._nestjs))
+        """Registra las 6 herramientas unificadas."""
+        self._registry.register(BuscarClientesTool(self._nestjs))
+        self._registry.register(BuscarUsuariosTool(self._nestjs))
+        self._registry.register(BuscarInmueblesTool(self._nestjs))
+        self._registry.register(BuscarArrendatariosTool(self._nestjs))
+        self._registry.register(BuscarContratosTool(self._nestjs))
+        self._registry.register(BuscarPagosTool(self._nestjs))
         LOGGER.info("Tools registradas: %s", self._registry.list_names())
 
     async def _fetch_user_context(
