@@ -37,6 +37,18 @@ def build_system_prompt(user_context: dict[str, Any] | None = None) -> str:
             "\nCuando te pregunte sobre sus datos personales (nombre, rol, empresa, teléfono, etc.), "
             "responde directamente con la información de arriba SIN usar herramientas."
         )
+        if ctx.get("client_id"):
+            user_block += (
+                f"\n\nREGLA OBLIGATORIA PARA CONSULTAS DEL NEGOCIO:"
+                f"\nEl ID del cliente de este usuario es: {ctx['client_id']}"
+                f"\nCuando pregunte por SUS inmuebles, arrendatarios, contratos, pagos o cualquier dato de su negocio:"
+                f"\n- Para inmuebles: usa getInmuebleList con idArrendador={ctx['client_id']}"
+                f"\n- Para arrendatarios: usa getArrendatarioList con idArrendador={ctx['client_id']}"
+                f"\n- Para contratos: usa getContratoList (filtra por inmueble o arrendatario obtenido)"
+                f"\n- Para pagos: usa getPagoList (filtra por inmueble obtenido)"
+                f"\n- Para datos del cliente: usa getClientSummary con clienteId={ctx['client_id']}"
+                f"\nNUNCA le pidas el ID al usuario. Ya lo tienes. Úsalo directamente."
+            )
     else:
         user_block = ""
 
