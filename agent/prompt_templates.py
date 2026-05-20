@@ -1,50 +1,57 @@
-"""System prompts y templates para el agente — optimizado para qwen2.5:3b."""
+"""System prompts — solo contexto del usuario.
+El prompt base (nombre, reglas, herramientas) vive en el Modelfile de Ollama.
+"""
 
 from typing import Any
 
 
 def build_system_prompt(user_context: dict[str, Any] | None = None) -> str:
-    """Construye un system prompt corto y directo para qwen2.5:3b."""
+    """Construye solo el contexto del usuario para complementar el Modelfile de Ollama.
 
+    El Modelfile ya tiene: nombre Claudia, reglas, herramientas.
+    Aquí solo agregamos: quién es el usuario, su rol, su empresa, su clienteId.
+    """
     ctx = user_context or {}
 
-    user_block = ""
+    if not ctx:
+        return ""
+
+    lines: list[str] = []
+
     if ctx.get("user_name"):
-        user_block = f"""
-USUARIO ACTUAL:
-Nombre: {ctx.get('user_name', 'Desconocido')}
-Rol: {ctx.get('user_rol_nombre', 'Desconocido')}
-Empresa: {ctx.get('client_name', 'Desconocida')}
-RFC: {ctx.get('client_rfc', 'N/A')}
-ClienteID: {ctx.get('client_id', 'N/A')}
-Teléfono: {ctx.get('user_telefono', 'N/A')}
-Último login: {ctx.get('user_ultimo_login', 'N/A')}
+        lines.append(f"Nombre: {ctx['user_name']}")
+    if ctx.get("user_username"):
+        lines.append(f"Usuario: {ctx['user_username']}")
+    if ctx.get("user_rol_nombre"):
+        lines.append(f"Rol: {ctx['user_rol_nombre']}")
+    if ctx.get("user_telefono"):
+        lines.append(f"Teléfono: {ctx['user_telefono']}")
+    if ctx.get("user_estatus"):
+        lines.append(f"Cuenta: {ctx['user_estatus']}")
+    if ctx.get("user_ultimo_login"):
+        lines.append(f"Último login: {ctx['user_ultimo_login']}")
+    if ctx.get("client_name"):
+        lines.append(f"Empresa: {ctx['client_name']}")
+    if ctx.get("client_rfc"):
+        lines.append(f"RFC: {ctx['client_rfc']}")
 
-Si pregunta por sus datos personales, responde directo con lo de arriba. NO uses herramientas para eso."""
+    if not lines:
+        return ""
 
-    auto_id = ""
+    prompt = "USUARIO ACTUAL:\n" + "\n".join(lines)
+    prompt += "\nSi pregunta por sus datos personales, responde directo con lo de arriba."
+
     if ctx.get("client_id"):
         cid = ctx["client_id"]
-        auto_id = f"""
+        prompt += (
+            f"\n\nEl clienteId de este usuario es {cid}."
+            f" Para sus inmuebles usa idArrendador={cid}."
+            f" Para sus arrendatarios usa idArrendador={cid}."
+            f" Para sus clientes usa id={cid}."
+            f" NUNCA le pidas el ID."
+        )
 
-REGLA: El clienteId del usuario es {cid}. Cuando pregunte por sus inmuebles, arrendatarios, contratos o pagos, usa idArrendador={cid} o clienteId={cid}. NUNCA le pidas el ID."""
-
-    return f"""Eres Claudia, asistente de gestión inmobiliaria. Responde en español, sé clara y cálida.
-{user_block}{auto_id}
-
-REGLAS:
-- Usa herramientas para datos del negocio. No inventes.
-- Si no puedes responder, di "No tengo acceso a esa información."
-- Montos en formato $X,XXX.XX
-
-HERRAMIENTAS:
-- buscarClientes: busca clientes por id, rfc o lista completa
-- buscarUsuarios: busca usuarios por id, clienteId o lista
-- buscarInmuebles: busca inmuebles por id, idArrendador o lista
-- buscarArrendatarios: busca arrendatarios por id, idArrendador o lista
-- buscarContratos: busca contratos por id, idArrendatario, idInmueble o lista
-- buscarPagos: busca pagos por idInmueble, resumen=true para totales
-"""
+    return prompt
 
 
-SYSTEM_PROMPT_NO_TOOLS = """Eres Claudia, asistente de gestión inmobiliaria. Responde en español."""
+SYSTEM_PROMPT_NO_TOOLS = ""

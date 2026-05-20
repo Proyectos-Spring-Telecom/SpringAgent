@@ -141,10 +141,10 @@ class AgentService:
         user_context = await self._fetch_user_context(user_id, client_id)
         system_prompt = build_system_prompt(user_context=user_context)
 
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message},
-        ]
+        messages: list[dict[str, Any]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": message})
 
         tool_definitions = self._registry.get_all_definitions()
 
