@@ -19,7 +19,7 @@ from agent_tools.user_tools import GetUserDetailTool, GetUserListTool
 from services.nestjs_client import NestJSClient
 
 from .ollama_client import OllamaClient
-from .prompt_templates import SYSTEM_PROMPT
+from .prompt_templates import build_system_prompt
 
 LOGGER = logging.getLogger("[AgentService]")
 
@@ -65,6 +65,68 @@ class AgentService:
         self._registry.register(GetFormulasTool(self._nestjs))
         LOGGER.info("Tools registradas: %s", self._registry.list_names())
 
+    async def _fetch_user_context(
+        self,
+        user_id: Optional[int],
+        client_id: Optional[int],
+    ) -> dict[str, Any]:
+        """Consulta NestJS para obtener datos completos del usuario y su cliente.
+
+        Retorna un diccionario con toda la info disponible.
+        Si falla, retorna dict vacío sin bloquear el chat.
+        """
+        context: dict[str, Any] = {}
+
+        if user_id:
+            try:
+                user_data = await self._nestjs.get(f"/ai-tools/usuarios/{user_id}")
+                if user_data.get("status") == "success":
+                    data = user_data.get("data", {}) or {}
+
+                    nombre = data.get("nombre", "")
+                    apellido_p = data.get("apellidoPaterno", "")
+                    apellido_m = data.get("apellidoMaterno", "")
+                    parts = [p for p in [nombre, apellido_p, apellido_m] if p]
+
+                    context["user_id"] = user_id
+                    context["user_name"] = " ".join(parts) if parts else None
+                    context["user_nombre"] = nombre or None
+                    context["user_apellido_paterno"] = apellido_p or None
+                    context["user_apellido_materno"] = apellido_m or None
+                    context["user_username"] = data.get("userName") or None
+                    context["user_telefono"] = data.get("telefono") or None
+                    context["user_rol_id"] = data.get("idRol")
+                    context["user_rol_nombre"] = data.get("rolNombre") or None
+                    context["user_estatus"] = "activo" if data.get("estatus") == 1 else "inactivo"
+                    context["user_ultimo_login"] = data.get("ultimoLogin") or None
+                    context["user_email_confirmado"] = data.get("emailConfirmado")
+                    context["client_id"] = data.get("idCliente") or client_id
+                    context["client_name"] = data.get("clienteNombre") or None
+                    context["client_rfc"] = data.get("clienteRfc") or None
+
+                    LOGGER.info(
+                        "Contexto usuario: %s | rol: %s | cliente: %s",
+                        context.get("user_name"),
+                        context.get("user_rol_nombre"),
+                        context.get("client_name"),
+                    )
+            except Exception as exc:
+                LOGGER.warning("No se pudo obtener datos del usuario %s: %s", user_id, exc)
+
+        if not context.get("client_name") and client_id:
+            try:
+                client_data = await self._nestjs.get(f"/ai-tools/clientes/{client_id}")
+                if client_data.get("status") == "success":
+                    data = client_data.get("data", {}) or {}
+                    context["client_id"] = client_id
+                    context["client_name"] = data.get("nombre") or None
+                    context["client_rfc"] = data.get("rfc") or None
+                    LOGGER.info("Contexto cliente: %s", context.get("client_name"))
+            except Exception as exc:
+                LOGGER.warning("No se pudo obtener datos del cliente %s: %s", client_id, exc)
+
+        return context
+
     async def chat(
         self,
         message: str,
@@ -84,8 +146,11 @@ class AgentService:
             (message or "")[:100],
         )
 
+        user_context = await self._fetch_user_context(user_id, client_id)
+        system_prompt = build_system_prompt(user_context=user_context)
+
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": message},
         ]
 
@@ -131,10 +196,9 @@ class AgentService:
             processing_time_ms = int((time.perf_counter() - start_time) * 1000)
 
             LOGGER.info(
-                "Chat completado conv_id=%s user_id=%s client_id=%s tools_used=%s tiempo=%dms",
+                "Chat completado conv_id=%s user=%s tools_used=%s tiempo=%dms",
                 conv_id,
-                user_id,
-                client_id,
+                user_context.get("user_name") or user_id,
                 tools_used,
                 processing_time_ms,
             )
