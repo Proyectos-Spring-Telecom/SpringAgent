@@ -143,7 +143,13 @@ class AgentService:
 
         messages: list[dict[str, Any]] = []
         if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": f"[CONTEXTO]\n{system_prompt}"})
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": "Entendido, tengo el contexto del usuario. ¿En qué puedo ayudarte?",
+                }
+            )
         messages.append({"role": "user", "content": message})
 
         tool_definitions = self._registry.get_all_definitions()
