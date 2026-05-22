@@ -89,7 +89,7 @@ class BuscarUsuariosTool(BaseTool):
 
 
 class BuscarInmueblesTool(BaseTool):
-    """Busca inmuebles. Con ID da detalle, sin él da la lista."""
+    """Busca inmuebles. Con ID da detalle, sin él da la lista de activos."""
 
     def __init__(self, nestjs: NestJSClient) -> None:
         self._nestjs = nestjs
@@ -101,7 +101,7 @@ class BuscarInmueblesTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Busca inmuebles/propiedades. Si das id, retorna detalle con zonas y servicios. "
+            "Busca inmuebles/propiedades activos. Si das id, retorna detalle con zonas y servicios. "
             "Si no, retorna lista. Filtra por idArrendador."
         )
 
@@ -115,22 +115,21 @@ class BuscarInmueblesTool(BaseTool):
                     "type": "integer",
                     "description": "Filtrar inmuebles de un cliente/arrendador",
                 },
-                "estatus": {"type": "integer", "description": "1=activos, 0=inactivos"},
             },
             "required": [],
         }
 
     async def execute(self, **kwargs: Any) -> dict[str, Any]:
-        if kwargs.get("id") is not None:
+        if kwargs.get("id"):
             return await self._nestjs.get(f"/ai-tools/inmuebles/{int(kwargs['id'])}")
-        params = {
-            k: v for k, v in kwargs.items() if v is not None and k in ("idArrendador", "estatus")
-        }
+        params: dict[str, Any] = {}
+        if kwargs.get("idArrendador"):
+            params["idArrendador"] = kwargs["idArrendador"]
         return await self._nestjs.get("/ai-tools/inmuebles", params=params or None)
 
 
 class BuscarArrendatariosTool(BaseTool):
-    """Busca arrendatarios/inquilinos. Con ID da detalle, sin él da la lista."""
+    """Busca arrendatarios activos. Con ID da detalle, sin él da la lista."""
 
     def __init__(self, nestjs: NestJSClient) -> None:
         self._nestjs = nestjs
@@ -142,7 +141,7 @@ class BuscarArrendatariosTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Busca arrendatarios (inquilinos). Si das id, retorna detalle con contratos y socios. "
+            "Busca arrendatarios (inquilinos) activos. Si das id, retorna detalle con contratos y socios. "
             "Si no, retorna lista. Filtra por idArrendador."
         )
 
@@ -156,22 +155,21 @@ class BuscarArrendatariosTool(BaseTool):
                     "type": "integer",
                     "description": "Filtrar arrendatarios de un cliente",
                 },
-                "estatus": {"type": "integer", "description": "1=activos, 0=inactivos"},
             },
             "required": [],
         }
 
     async def execute(self, **kwargs: Any) -> dict[str, Any]:
-        if kwargs.get("id") is not None:
+        if kwargs.get("id"):
             return await self._nestjs.get(f"/ai-tools/arrendatarios/{int(kwargs['id'])}")
-        params = {
-            k: v for k, v in kwargs.items() if v is not None and k in ("idArrendador", "estatus")
-        }
+        params: dict[str, Any] = {}
+        if kwargs.get("idArrendador"):
+            params["idArrendador"] = kwargs["idArrendador"]
         return await self._nestjs.get("/ai-tools/arrendatarios", params=params or None)
 
 
 class BuscarContratosTool(BaseTool):
-    """Busca contratos de arrendamiento. Con ID da detalle, sin él da la lista."""
+    """Busca contratos activos. Con ID da detalle, sin él da la lista."""
 
     def __init__(self, nestjs: NestJSClient) -> None:
         self._nestjs = nestjs
@@ -183,7 +181,7 @@ class BuscarContratosTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Busca contratos de arrendamiento. Si das id, retorna detalle financiero completo. "
+            "Busca contratos de arrendamiento activos. Si das id, retorna detalle financiero completo. "
             "Si no, retorna lista. Filtra por idArrendatario o idInmueble."
         )
 
@@ -198,19 +196,18 @@ class BuscarContratosTool(BaseTool):
                     "description": "Filtrar contratos de un arrendatario",
                 },
                 "idInmueble": {"type": "integer", "description": "Filtrar contratos de un inmueble"},
-                "estatus": {"type": "integer", "description": "1=activos, 0=inactivos"},
             },
             "required": [],
         }
 
     async def execute(self, **kwargs: Any) -> dict[str, Any]:
-        if kwargs.get("id") is not None:
+        if kwargs.get("id"):
             return await self._nestjs.get(f"/ai-tools/contratos/{int(kwargs['id'])}")
-        params = {
-            k: v
-            for k, v in kwargs.items()
-            if v is not None and k in ("idArrendatario", "idInmueble", "estatus")
-        }
+        params: dict[str, Any] = {}
+        if kwargs.get("idArrendatario"):
+            params["idArrendatario"] = kwargs["idArrendatario"]
+        if kwargs.get("idInmueble"):
+            params["idInmueble"] = kwargs["idInmueble"]
         return await self._nestjs.get("/ai-tools/contratos", params=params or None)
 
 
